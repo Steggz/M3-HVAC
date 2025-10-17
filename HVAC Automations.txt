@@ -1,0 +1,942 @@
+//Version 2.2
+
+function onOpen(){
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Data Calculations')
+    .addItem('Build Calcs Sheet','menuBuildCalcsSheet')
+    .addItem('Build ENO Averages Sheet','menuBuildAveragesSheet')
+    .addItem('Build Triples Sheet','menuBuildTriplesSheet')
+    .addItem('Build P3 Submission Sheet','menuCreateP3SubmissionSheet')
+    .addItem('Build ENO Workbook Sheet','menuCreateENOWorkbookSheet')
+    .addItem('Check EERs','menuCheckEERs')
+    .addItem('Calculate Incentive by BTUs','menuGetIncentiveByBTU')
+    .addItem('Calculate Incentive by Tonnage','menuGetIncentiveByTons')
+    .addToUi();
+}
+
+/**
+ * CUSTOM MENU FUNCTIONS
+ */
+
+/**
+ * Build all additional columns to end of the spreadsheets for calculations
+ */
+
+function menuBuildCalcsSheet(){
+  let sheet = SpreadsheetApp.getActiveSpreadsheet();
+  let rowLength = sheet.getLastRow();
+  //check if the sheet already exists
+  let calcSheetExists = sheet.getSheetByName("Calcs");
+  if(calcSheetExists == null){
+    sheet.duplicateActiveSheet();
+    sheet.renameActiveSheet("Calcs");
+    buildCalcHeaders();
+  }
+  let colLength = sheet.getLastColumn();
+  calculateWattsPre();
+  calculateWattsPost();
+  
+  if(sheet.getRange("BR2:BR2").getValue() == ""){
+    menuGetIncentiveByBTU();
+  }
+  let calcsSheet = SpreadsheetApp.getActiveSheet();
+
+  let btus,btus_pre_col,btus_post_col,tonnage,rt_temp_pre,rt_temp_post,sup_temp_pre,sup_temp_post,deltaT_pre_col,deltaT_post_col,
+      deltaT_pre,deltaT_post,cfm_pre,cfm_post,cfm_pre_col,cfm_post_col,eer_pre_col,eer_post_col,watts_pre,watts_post,btus_pre,btus_post,kwh_saved_col,kwh_saved;
+
+  for (let i = 2; i <= rowLength; i++){
+    btus = calcsSheet.getRange(i,13).getValue();
+    tonnage = calcsSheet.getRange(i,16).getValue();
+    cfm_pre_col = calcsSheet.getRange(i,71);
+    cfm_pre = calculateCfm(tonnage);
+    cfm_pre_col.setValue(cfm_pre);
+    rt_temp_pre = calcsSheet.getRange(i,20).getValue();
+    sup_temp_pre = calcsSheet.getRange(i,21).getValue();
+    deltaT_pre_col = calcsSheet.getRange(i,73);
+    deltaT_pre = calculateDeltaT(rt_temp_pre,sup_temp_pre);
+    deltaT_pre_col.setValue(deltaT_pre);
+    btus_pre_col = calcsSheet.getRange(i,75);
+    btus_pre = calculateBtus(deltaT_pre,cfm_pre);
+    btus_pre_col.setValue(btus_pre);
+    watts_pre = calcsSheet.getRange(i,77).getValue();
+    eer_pre_col = calcsSheet.getRange(i,68);
+    eer_pre = calculateEER(btus_pre,watts_pre);
+    eer_pre_col.setValue(eer_pre);
+    //Post calculations
+    cfm_post_col = calcsSheet.getRange(i,72);
+    cfm_post = calculateCfm(tonnage);
+    cfm_post_col.setValue(cfm_post);
+    rt_temp_post = calcsSheet.getRange(i,36).getValue();
+    sup_temp_post = calcsSheet.getRange(i,37).getValue();
+    deltaT_post_col = calcsSheet.getRange(i,74);
+    deltaT_post = calculateDeltaT(rt_temp_post,sup_temp_post);
+    deltaT_post_col.setValue(deltaT_post);
+    btus_post_col = calcsSheet.getRange(i,76);
+    btus_post = calculateBtus(deltaT_post,cfm_post);
+    btus_post_col.setValue(btus_post);
+    watts_post = calcsSheet.getRange(i,78).getValue();
+    eer_post_col = calcsSheet.getRange(i,69);
+    eer_post = calculateEER(btus_post,watts_post);
+    eer_post_col.setValue(eer_post);
+    kwh_saved_col = calcsSheet.getRange(i,79);
+    kwh_saved_col.setValue(calculatekWhSaved(btus,eer_pre,eer_post));
+    kwh_saved = calcsSheet.getRange(i,79).getValue();
+    active_row = calcsSheet.getRange(i,1,1,colLength);
+    
+    if(kwh_saved < 1){
+      active_row.setBackground('orange');
+    } 
+    else if(isNaN(kwh_saved)){
+      active_row.setBackground('red');
+    }
+    else {
+      active_row.setBackground(null);
+    }
+  }
+}
+
+function menuBuildAveragesSheet() {
+  let sheet = SpreadsheetApp.getActiveSpreadsheet();
+  let rowLength = sheet.getLastRow();
+  let c_amps1_pre, c_amps2_pre, c_amps3_pre, c_amps_pre, c_volts1_pre, c_volts2_pre, c_volts3_pre, c_volts_pre, e_amps1_pre, e_amps2_pre, e_amps3_pre, e_amps_pre, e_volts1_pre, e_volts2_pre, e_volts3_pre, e_volts_pre, ca_pre_avg, cv_pre_avg, ea_pre_avg, ev_pre_avg,c_amps1_post, c_amps2_post, c_amps3_post, c_amps_post, c_volts1_post, c_volts2_post, c_volts3_post, c_volts_post, e_amps1_post, e_amps2_post, e_amps3_post, e_amps_post, e_volts1_post, e_volts2_post, e_volts3_post, e_volts_post, ca_post_avg, cv_post_avg, ea_post_avg, ev_post_avg,unit_make, unit_model, unit_info, phases;
+
+  //check if the sheet already exists
+  let avgSheetExists = sheet.getSheetByName("Avgs");
+  if(avgSheetExists == null){
+    sheet.duplicateActiveSheet();
+    sheet.renameActiveSheet("Avgs");
+    buildAvgHeaders();
+  }
+
+  sheet = SpreadsheetApp.getActiveSheet();
+  
+  for (let i = 2; i <= rowLength; i++) {
+    c_amps1_pre = sheet.getRange(i,24).getValue();
+    c_amps2_pre = sheet.getRange(i,25).getValue();
+    c_amps3_pre = sheet.getRange(i,26).getValue();
+    c_amps_pre = calcAverage(c_amps1_pre,c_amps2_pre,c_amps3_pre);
+    c_volts1_pre = sheet.getRange(i,27).getValue();
+    c_volts2_pre = sheet.getRange(i,28).getValue();
+    c_volts3_pre = sheet.getRange(i,29).getValue();
+    c_volts_pre = calcAverage(c_volts1_pre,c_volts2_pre,c_volts3_pre);
+    e_amps1_pre = sheet.getRange(i,30).getValue();
+    e_amps2_pre = sheet.getRange(i,31).getValue();
+    e_amps3_pre = sheet.getRange(i,32).getValue();
+    e_amps_pre = calcAverage(e_amps1_pre,e_amps2_pre,e_amps3_pre);
+    e_volts1_pre = sheet.getRange(i,33).getValue();
+    e_volts2_pre = sheet.getRange(i,34).getValue();
+    e_volts3_pre = sheet.getRange(i,35).getValue();
+    e_volts_pre = calcAverage(e_volts1_pre,e_volts2_pre,e_volts3_pre);
+    //post averages
+    c_amps1_post = sheet.getRange(i,40).getValue();
+    c_amps2_post = sheet.getRange(i,41).getValue();
+    c_amps3_post = sheet.getRange(i,42).getValue();
+    c_amps_post = calcAverage(c_amps1_post,c_amps2_post,c_amps3_post);
+    c_volts1_post = sheet.getRange(i,43).getValue();
+    c_volts2_post = sheet.getRange(i,44).getValue();
+    c_volts3_post = sheet.getRange(i,45).getValue();
+    c_volts_post = calcAverage(c_volts1_post,c_volts2_post,c_volts3_post);
+    e_amps1_post = sheet.getRange(i,46).getValue();
+    e_amps2_post = sheet.getRange(i,47).getValue();
+    e_amps3_post = sheet.getRange(i,48).getValue();
+    e_amps_post = calcAverage(e_amps1_post,e_amps2_post,e_amps3_post);
+    e_volts1_post = sheet.getRange(i,49).getValue();
+    e_volts2_post = sheet.getRange(i,50).getValue();
+    e_volts3_post = sheet.getRange(i,51).getValue();
+    e_volts_post = calcAverage(e_volts1_post,e_volts2_post,e_volts3_post);
+    //make/model info
+    unit_make = sheet.getRange(i,8).getValue();
+    unit_model = sheet.getRange(i,10).getValue();
+    unit_info = (unit_make+" "+unit_model);
+    phases = sheet.getRange(i,17).getValue();
+
+    //fill columns
+    cv_pre_avg = sheet.getRange(i,67);
+    cv_post_avg = sheet.getRange(i,68);
+    ca_pre_avg = sheet.getRange(i,69);
+    ca_post_avg = sheet.getRange(i,70);
+    ev_pre_avg = sheet.getRange(i,71);
+    ev_post_avg = sheet.getRange(i,72);
+    ea_pre_avg = sheet.getRange(i,73);
+    ea_post_avg = sheet.getRange(i,74);
+    unit_info_col = sheet.getRange(i,75);
+    is_three_phase_col = sheet.getRange(i,76);
+    
+    ca_pre_avg.setValue(roundToTwo(c_amps_pre));
+    cv_pre_avg.setValue(roundToTwo(c_volts_pre));
+    ea_pre_avg.setValue(roundToTwo(e_amps_pre));
+    ev_pre_avg.setValue(roundToTwo(e_volts_pre));
+    ca_post_avg.setValue(roundToTwo(c_amps_post));
+    cv_post_avg.setValue(roundToTwo(c_volts_post));
+    ea_post_avg.setValue(roundToTwo(e_amps_post));
+    ev_post_avg.setValue(roundToTwo(e_volts_post));
+    unit_info_col.setValue(unit_info);
+    is_three_phase_col.setValue(isThreePhase(phases));    
+  } 
+}
+
+function menuBuildTriplesSheet(){
+  let sheet = SpreadsheetApp.getActiveSpreadsheet();
+  let rowLength = sheet.getLastRow();
+
+  //check if the sheet already exists
+  let tripSheetExists = sheet.getSheetByName("Triples");
+  if(tripSheetExists == null){
+    sheet.duplicateActiveSheet();
+    sheet.renameActiveSheet("Triples");
+    buildTripleHeaders();
+  }
+  calcTriples();
+}
+
+function menuCreateP3SubmissionSheet(){
+  var sheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetFrom = sheet.getSheetByName("Calcs");
+  let rowLength = sheetFrom.getLastRow();
+  let copy_unitType,copy_splitPack,copy_coolBtu,copy_heatBtu,copy_manuYear,copy_maint,
+      copy_eerPre,copy_eerPost,copy_manu,copy_modelno,copy_serialno
+
+  copy_unitType = sheetFrom.getRange(1, 9, rowLength, 1).getValues();
+  copy_splitPack = sheetFrom.getRange(1, 12, rowLength, 1).getValues();
+  copy_coolBtu = sheetFrom.getRange(1, 13, rowLength, 1).getValues();
+  copy_heatBtu = sheetFrom.getRange(1, 14, rowLength, 1).getValues();
+  copy_manuYear = sheetFrom.getRange(1, 6, rowLength, 1).getValues();
+  copy_maint = sheetFrom.getRange(1, 5, rowLength, 1).getValues();
+  copy_eerPre = sheetFrom.getRange(1, 68, rowLength, 1).getValues();
+  copy_eerPost = sheetFrom.getRange(1, 69, rowLength, 1).getValues();
+  copy_manu = sheetFrom.getRange(1, 8, rowLength, 1).getValues();
+  copy_modelno = sheetFrom.getRange(1, 10, rowLength, 1).getValues();
+  copy_serialno = sheetFrom.getRange(1, 11, rowLength, 1).getValues();
+
+  sheet.insertSheet("P3 Submissions")
+  var sheetTo = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("P3 Submissions");
+
+  //Paste to another sheet from first cell onwards
+  sheetTo.getRange(1,1,rowLength,1).setValues(copy_unitType);
+  sheetTo.getRange(1,2,rowLength,1).setValues(copy_splitPack);
+  sheetTo.getRange(1,3,rowLength,1).setValues(copy_coolBtu);
+  sheetTo.getRange(1,4,rowLength,1).setValues(copy_heatBtu);
+  sheetTo.getRange(1,5,rowLength,1).setValues(copy_manuYear);
+  sheetTo.getRange(1,6,rowLength,1).setValues(copy_maint);
+  sheetTo.getRange(1,7,rowLength,1).setValues(copy_eerPre);
+  sheetTo.getRange(1,8,rowLength,1).setValues(copy_eerPost);
+  sheetTo.getRange(1,9,rowLength,1).setValues(copy_manu);
+  sheetTo.getRange(1,10,rowLength,1).setValues(copy_modelno);
+  sheetTo.getRange(1,11,rowLength,1).setValues(copy_serialno);
+}
+
+function menuCreateENOWorkbookSheet(){
+  var sheet = SpreadsheetApp.getActiveSpreadsheet();
+  var calcSheet = sheet.getSheetByName("Calcs");
+  var avgSheet = sheet.getSheetByName("Avgs")
+  let rowLength = sheet.getLastRow();
+  let copy_unitName,copy_unitType,copy_tonnage,copy_makeModel,copy_threePhase,copy_cfmPre,
+      copy_cfmPost,copy_supplyTempPre,copy_supplyTempPost,copy_returnTempPre,copy_returnTempPost,
+      copy_condVoltPre,copy_condVoltPost,copy_condAmpPre,copy_condAmpPost,copy_evapVoltPre,
+      copy_evapVoltPost,copy_evapAmpPre,copy_evapAmpPost,currentCell,cellValue,cellPF1,cellPF2
+
+  copy_unitName = calcSheet.getRange(1,4,rowLength,1).getValues();
+  copy_unitType = calcSheet.getRange(1, 9, rowLength, 1).getValues();
+  copy_tonnage = calcSheet.getRange(1, 16, rowLength, 1).getValues();
+  copy_makeModel = avgSheet.getRange(1, 75, rowLength, 1).getValues();
+  copy_threePhase = avgSheet.getRange(1, 76, rowLength, 1).getValues();
+  copy_cfmPre = calcSheet.getRange(1, 71, rowLength, 1).getValues();
+  copy_cfmPost = calcSheet.getRange(1, 72, rowLength, 1).getValues();
+  copy_supplyTempPre = calcSheet.getRange(1, 21, rowLength, 1).getValues();
+  copy_supplyTempPost = calcSheet.getRange(1, 37, rowLength, 1).getValues();
+  copy_returnTempPre = calcSheet.getRange(1, 20, rowLength, 1).getValues();
+  copy_returnTempPost = calcSheet.getRange(1, 36, rowLength, 1).getValues();
+  copy_condVoltPre = avgSheet.getRange(1, 67, rowLength, 1).getValues();
+  copy_condVoltPost = avgSheet.getRange(1, 68, rowLength, 1).getValues();
+  copy_condAmpPre = avgSheet.getRange(1, 69, rowLength, 1).getValues();
+  copy_condAmpPost = avgSheet.getRange(1, 70, rowLength, 1).getValues();
+  copy_evapVoltPre = avgSheet.getRange(1, 71, rowLength, 1).getValues();
+  copy_evapVoltPost = avgSheet.getRange(1, 72, rowLength, 1).getValues();
+  copy_evapAmpPre = avgSheet.getRange(1, 73, rowLength, 1).getValues();
+  copy_evapAmpPost = avgSheet.getRange(1, 74, rowLength, 1).getValues();
+
+  sheet.insertSheet("ENO Workbook")
+  var sheetTo = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("ENO Workbook");
+
+  //Paste to another sheet from first cell onwards
+  sheetTo.getRange(1,1,rowLength,1).setValues(copy_unitName);
+  sheetTo.getRange(1,2,rowLength,1).setValues(copy_unitType);
+  sheetTo.getRange(1,3,rowLength,1).setValues(copy_tonnage);
+  sheetTo.getRange(1,4,rowLength,1).setValues(copy_makeModel);
+  sheetTo.getRange(1,5,rowLength,1).setValues(copy_threePhase);
+  sheetTo.getRange(1,6,rowLength,1).setValues(copy_cfmPre);
+  sheetTo.getRange(1,7,rowLength,1).setValues(copy_cfmPost);
+  sheetTo.getRange(1,8,rowLength,1).setValues(copy_supplyTempPre);
+  sheetTo.getRange(1,9,rowLength,1).setValues(copy_supplyTempPost);
+  sheetTo.getRange(1,10,rowLength,1).setValues(copy_returnTempPre);
+  sheetTo.getRange(1,11,rowLength,1).setValues(copy_returnTempPost);
+  sheetTo.getRange(1,12).setValue("Pre Power Factor");
+  sheetTo.getRange(1,13).setValue("Post Power Factor");
+  sheetTo.getRange(1,14,rowLength,1).setValues(copy_condVoltPre);
+  sheetTo.getRange(1,15,rowLength,1).setValues(copy_condVoltPost);
+  sheetTo.getRange(1,16,rowLength,1).setValues(copy_condAmpPre);
+  sheetTo.getRange(1,17,rowLength,1).setValues(copy_condAmpPost);
+  sheetTo.getRange(1,18,rowLength,1).setValues(copy_evapVoltPre);
+  sheetTo.getRange(1,19,rowLength,1).setValues(copy_evapVoltPost);
+  sheetTo.getRange(1,20,rowLength,1).setValues(copy_evapAmpPre);
+  sheetTo.getRange(1,21,rowLength,1).setValues(copy_evapAmpPost);
+
+  for (let i = 2; i <= rowLength;i++){
+    cellPF1 = sheetTo.getRange(i,12);
+    cellPF2 = sheetTo.getRange(i,13);
+    cellPF1.setValue(1);
+    cellPF2.setValue(1);
+    currentCell = sheetTo.getRange(i,2);
+    cellValue = currentCell.getValue();
+    if (cellValue == "Air Handler"){
+      currentCell.setValue("A/C Tune-Up");
+    } else {
+      currentCell.setValue("Heat Pump Tune-Up");
+    }
+  } 
+}
+
+function menuCheckEERs(){
+  let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Calcs");
+  let rowLength = sheet.getLastRow();
+
+  for (let i = 2; i <= rowLength;i++){
+    let pre_eer = sheet.getRange(i,68).getValue();
+    let active_pre = sheet.getRange(i,68);
+    let post_eer = sheet.getRange(i,69).getValue();
+    let active_post = sheet.getRange(i,69);
+    
+    if(pre_eer < 5 || pre_eer > 15){
+      active_pre.setBackground('#31a1ef');
+    }
+    else {
+      active_pre.setBackground(null);
+    }
+
+    if (post_eer < 5 || post_eer > 15){
+      active_post.setBackground('#31a1ef');
+    }
+    else{
+      active_post.setBackground(null);
+    }
+
+    if(pre_eer > post_eer){
+      active_pre.setBackground('red');
+      active_post.setBackground('red');
+    }
+  }
+}
+
+function menuGetIncentiveByBTU(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let incentive = 0;
+  let rowLength = sheet.getLastRow();
+  const btuError = "Bad BTU, check the BTU column for issues.";
+  let btus;
+
+  for (let i = 2; i <= rowLength; i++) {
+    btus = sheet.getRange(i,13).getValue();
+    active_incentive_cell = sheet.getRange(i,70);
+
+    //calculate the incentive based on BTUs
+    if (btus < 18000) {
+      incentive = 0;
+    }
+    else if (btus >= 18000 && btus <= 42000){
+      incentive = 225;
+    }
+    else if (btus >= 42001 && btus <= 60000){
+      incentive = 275;
+    }
+    else if (btus >= 60001 && btus <= 120000) {
+      incentive = 450;
+    }
+    else if (btus >= 120001 && btus <= 180000) {
+      incentive = 650;
+    }
+    else if (btus >= 180001 && btus <= 300000) {
+      incentive = 800;
+    }
+    else if (btus >= 300001 && btus <= 360000) {
+      incentive = 850;
+    }
+    else if (btus >= 360001 && btus <= 600000) {
+      incentive = 1400;
+    }
+    else if (btus >= 600001 && btus <= 960000) {
+      incentive = 2000;
+    }
+    else if (btus >= 960001) {
+      incentive = 2500;
+    }
+
+    //Fill in the Incentive Column with the determined incentive value
+    if (incentive > 0){
+      active_incentive_cell.setValue(incentive);
+    }
+    else {
+      active_incentive_cell.setValue(btuError);
+    }
+  }
+}
+
+function menuGetIncentiveByTons(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let incentive = 0;
+  let rowLength = sheet.getLastRow();
+  const tonError = "Bad Tons, check the Tonnage column for issues.";
+  let tons;
+
+  for (let i = 2; i <= rowLength; i++) {
+    tons = sheet.getRange(i,16).getValue();
+    active_incentive_cell = sheet.getRange(i,70);
+
+    //calculate the incentive based on Tons
+    if (tons < 1.5) {
+      incentive = 0;
+    }
+    else if (tons >= 1.5 && tons <= 3.5){
+      incentive = 225;
+    }
+    else if (tons >= 3.6 && tons <= 5){
+      incentive = 275;
+    }
+    else if (tons >= 5.1 && tons <= 10) {
+      incentive = 450;
+    }
+    else if (tons >= 10.1 && tons <= 15) {
+      incentive = 650;
+    }
+    else if (tons >= 15.1 && tons <= 25) {
+      incentive = 800;
+    }
+    else if (tons >= 25.1 && tons <= 30) {
+      incentive = 850;
+    }
+    else if (tons >= 30.1 && tons <= 50) {
+      incentive = 1400;
+    }
+    else if (tons >= 50.1 && tons <= 80) {
+      incentive = 2000;
+    }
+    else if (tons >= 80.1) {
+      incentive = 2500;
+    }
+
+    //Fill in the Incentive Column with the determined incentive value
+    if (incentive > 0){
+      active_incentive_cell.setValue(incentive);
+    }
+    else {
+      active_incentive_cell.setValue(tonError);
+    }
+  }
+}
+
+/**
+ * UTILITY FUNCTIONS
+ */
+
+function calculateCfm(tonnage_cell){
+  let cfm;
+  let tonnage = tonnage_cell;
+
+  //calc cfm
+  cfm = (350*tonnage)
+
+  return cfm;
+}
+
+function calculateDeltaT(return_temp, supply_temp){
+  let deltaT;
+  let rt_temp = return_temp;
+  let sup_temp = supply_temp;
+
+  deltaT = roundToTwo(rt_temp - sup_temp);
+
+  return deltaT;
+
+}
+
+function calculateBtus(deltaT_in,cfm_in){
+  let btus;
+  let deltaT = deltaT_in;
+  let cfms = cfm_in;
+
+  btus = roundToTwo((deltaT * cfms) * 1.08);
+
+  return btus;
+}
+
+function isThreePhase(phases_in){
+  let phases = phases_in;
+
+  if(phases == "Three"){
+    return "Yes";
+  }
+  else{
+    return "No";
+  }
+}
+
+function calculateEER(btus_in,watts_in){
+  const btuError = "Bad BTUs, check the BTU Output (Post Clean) column for issues.";
+  const wattError = "Bad Watts, check the Watts (Post Clean) column for issues.";
+  let btus = btus_in;
+  let watts = watts_in;
+  let eer;
+
+  if(isNaN(btus)){
+    return btuError;
+  }
+  else if(isNaN(watts)){
+    return wattError;
+  }
+  else {
+      eer = roundToTwo(btus/watts);
+      return eer;
+  }
+}
+
+function calculatekWhSaved(factory_btu,eer_pre_in,eer_post_in){
+  const btu_error = "BTU Error. Check the BTU Cooling column";
+  const eer_pre_error = "EER Pre Error. Check the EER Pre column";
+  const eer_post_error = "EER Post Error. Check the EER Post column";
+  let btus = factory_btu;
+  let eer_pre = eer_pre_in;
+  let eer_post = eer_post_in;
+  let kwh_saved;
+
+  if(isNaN(btus)){
+    return btu_error;
+  }
+  else if(isNaN(eer_pre)){
+    return eer_pre_error;
+  }
+  else if(isNaN(eer_post)){
+    return eer_post_error;
+  }
+  else{
+    kwh_saved = roundToTwo((btus*0.001*((1/eer_pre)-(1/eer_post))*1637));
+    return kwh_saved;
+  }
+}
+
+/**
+ * @customfunction
+ */
+function getMakeModel(make_in,model_in){
+  let make = make_in;
+  let model = model_in;
+  let output = make +" "+ model;
+
+  return output;
+}
+
+function getRandom(min, max){
+  const minCeiled = Math.ceil(min);
+  const maxFloored = Math.floor(max);
+  return Math.floor(Math.random() * (maxFloored - minCeiled + 1) + minCeiled); // The maximum is inclusive and the minimum is inclusive
+}
+
+function roundToTwo(num){
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+}
+
+function calcAverage(num1_in,num2_in,num3_in){
+  let base1 = num1_in;
+  let base2 = num2_in;
+  let base3 = num3_in;
+  let average;
+  
+  //cant be 3 phase
+  if(base2 == null || base2 == 0){
+    average = base1;
+  }
+
+  //cant be 3 phase
+  if(base3 == null || base3 == 0){
+    if(base2 != null && base2 != 0){
+      average = (base1+base2)/2;
+    }
+  }
+
+  if(base3 != null && base3 != 0){
+    average = (base1+base2+base3)/3;
+  }
+  return average;
+}
+
+function tripleBase(base){
+  let diff = (base*.1);
+  let trips;
+  let upper = base+diff;
+  let lower = base-diff;
+  upper = roundToTwo(upper);
+  lower = roundToTwo(lower);
+  if(base == null){
+    return trips;
+  }
+  else if(base == 0){
+    return trips;
+  }
+  else
+    trips = base+'/'+lower+'/'+upper;
+  return trips;
+}
+
+function tripleTemps(base){
+  let diff = getRandom(0.1,1);
+  let trips;
+  let upper = base+diff;
+  let lower = base-diff;
+  upper = roundToTwo(upper);
+  lower = roundToTwo(lower);
+  if(base == null){
+    return trips;
+  }
+  else if(base == 0){
+    return trips;
+  }
+  else
+    trips = base+'/'+lower+'/'+upper;
+  return trips;
+}
+
+function buildTripleHeaders(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let rowLength = sheet.getLastRow();
+  //build all the special cols at the end
+  const headers = [['Return Temp Pre','Supply Temps Pre','Static Pressure Pre','Airflow Pre','Cond Amps 1 Pre','Cond Amps 2 Pre','Cond Amps 3 Pre','Cond Volts 1 Pre','Cond Volts 2 Pre','Cond Volts 3 Pre','Evap Amps 1 Pre','Evap Amps 2 Pre','Evap Amps 3 Pre','Evap Volts 1 Pre','Evap Volts 2 Pre','Evap Volts 3 Pre','Return Temp Post','Supply Temps Post','Static Pressure Post','Airflow Post','Cond Amps 1 Post','Cond Amps 2 Post','Cond Amps 3 Post','Cond Volts 1 Post','Cond Volts 2 Post','Cond Volts 3 Post','Evap Amps 1 Post','Evap Amps 2 Post','Evap Amps 3 Post','Evap Volts 1 Post','Evap Volts 2 Post','Evap Volts 3 Post']];
+  //adjust to desired range [32]
+  let range = sheet.getRange('BM1:CR1');
+  let testCell = sheet.getRange(1,67).getValue();
+  if(testCell != "Static Pressure Pre"){
+    range.setValues(headers);
+  }
+}
+
+function buildCalcHeaders(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  const headers = [['MX Contract','EER Pre','EER Post','Incentive','CFMs (Pre Clean)','CFMs (Post Clean)','DeltaT (Pre Clean)','DeltaT (Post Clean)','BTU Output (Pre Clean)','BTU Output (Post Clean)','Watts (Pre Clean)','Watts (Post Clean)','kWh Saved']];
+  //adjust to desired range [13]
+  let range = sheet.getRange('BO1:CA1');
+  let testCell = sheet.getRange(1,67).getValue();
+  if(testCell != "MX Contract"){
+    range.setValues(headers);
+  }
+}
+
+function buildAvgHeaders(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  const headers = [['cond volts pre','cond volts post','cond amps pre','cond amps post','evap volts pre','evap volts post','evap amps pre','evap amps post','make/model','3 phase?']];
+  //adjust to desired range [15]
+  let range = sheet.getRange('BO1:BX1');
+  let testCell = sheet.getRange(1,67).getValue();
+  if(testCell != "cond volts pre"){
+    range.setValues(headers);
+  }
+}
+
+function calcTriples(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let rowLength = sheet.getLastRow();
+  //pre values
+  let return_temp_pre, supply_temp_pre, static_pre, airflow_pre, c_amps1_pre, c_amps2_pre, c_amps3_pre, c_volts1_pre, c_volts2_pre;
+  let c_volts3_pre, e_amps1_pre, e_amps2_pre, e_amps3_pre, e_volts1_pre, e_volts2_pre, e_volts3_pre;
+  //post values
+  let return_temp_post, supply_temp_post, static_post, airflow_post, c_amps1_post, c_amps2_post, c_amps3_post, c_volts1_post, c_volts2_post;
+  let c_volts3_post, e_amps1_post, e_amps2_post, e_amps3_post, e_volts1_post, e_volts2_post, e_volts3_post;
+  //tripled values pre
+  let trip_return_temp_pre, trip_supply_temp_pre, trip_static_pre, trip_airflow_pre, trip_c_amps1_pre, trip_c_amps2_pre, trip_c_amps3_pre, trip_c_volts1_pre;
+  let trip_c_volts2_pre, trip_c_volts3_pre, trip_e_amps1_pre, trip_e_amps2_pre, trip_e_amps3_pre, trip_e_volts1_pre, trip_e_volts2_pre, trip_e_volts3_pre;
+  //triples post
+  let trip_return_temp_post, trip_supply_temp_post, trip_static_post, trip_airflow_post, trip_c_amps1_post, trip_c_amps2_post, trip_c_amps3_post, trip_c_volts1_post;
+  let trip_c_volts2_post, trip_c_volts3_post, trip_e_amps1_post, trip_e_amps2_post, trip_e_amps3_post, trip_e_volts1_post, trip_e_volts2_post, trip_e_volts3_post;
+
+  for (let i = 2; i <= rowLength; i++) {
+    //pre values
+    return_temp_pre = sheet.getRange(i,20).getValue();
+    supply_temp_pre = sheet.getRange(i,21).getValue();
+    static_pre = sheet.getRange(i,22).getValue();
+    airflow_pre = sheet.getRange(i,23).getValue();
+    c_amps1_pre = sheet.getRange(i,24).getValue();
+    c_amps2_pre = sheet.getRange(i,25).getValue();
+    c_amps3_pre = sheet.getRange(i,26).getValue();
+    c_volts1_pre = sheet.getRange(i,27).getValue();
+    c_volts2_pre = sheet.getRange(i,28).getValue();
+    c_volts3_pre = sheet.getRange(i,29).getValue();
+    e_amps1_pre = sheet.getRange(i,30).getValue();
+    e_amps2_pre = sheet.getRange(i,31).getValue();
+    e_amps3_pre = sheet.getRange(i,32).getValue();
+    e_volts1_pre = sheet.getRange(i,33).getValue();
+    e_volts2_pre = sheet.getRange(i,34).getValue();
+    e_volts3_pre = sheet.getRange(i,35).getValue();
+    //post values
+    return_temp_post = sheet.getRange(i,36).getValue();
+    supply_temp_post = sheet.getRange(i,37).getValue();
+    static_post = sheet.getRange(i,38).getValue();
+    airflow_post = sheet.getRange(i,39).getValue();
+    c_amps1_post = sheet.getRange(i,40).getValue();
+    c_amps2_post = sheet.getRange(i,41).getValue();
+    c_amps3_post = sheet.getRange(i,42).getValue();
+    c_volts1_post = sheet.getRange(i,43).getValue();
+    c_volts2_post = sheet.getRange(i,44).getValue();
+    c_volts3_post = sheet.getRange(i,45).getValue();
+    e_amps1_post = sheet.getRange(i,46).getValue();
+    e_amps2_post = sheet.getRange(i,47).getValue();
+    e_amps3_post = sheet.getRange(i,48).getValue();
+    e_volts1_post = sheet.getRange(i,49).getValue();
+    e_volts2_post = sheet.getRange(i,50).getValue();
+    e_volts3_post = sheet.getRange(i,51).getValue();
+    //tripled values pre
+    trip_return_temp_pre = sheet.getRange(i,65);
+    trip_supply_temp_pre = sheet.getRange(i,66);
+    trip_static_pre = sheet.getRange(i,67);
+    trip_airflow_pre = sheet.getRange(i,68);
+    trip_c_amps1_pre = sheet.getRange(i,69);
+    trip_c_amps2_pre = sheet.getRange(i,70);
+    trip_c_amps3_pre = sheet.getRange(i,71);
+    trip_c_volts1_pre = sheet.getRange(i,72);
+    trip_c_volts2_pre = sheet.getRange(i,73);
+    trip_c_volts3_pre = sheet.getRange(i,74);
+    trip_e_amps1_pre = sheet.getRange(i,75);
+    trip_e_amps2_pre = sheet.getRange(i,76);
+    trip_e_amps3_pre = sheet.getRange(i,77);
+    trip_e_volts1_pre = sheet.getRange(i,78);
+    trip_e_volts2_pre = sheet.getRange(i,79);
+    trip_e_volts3_pre = sheet.getRange(i,80);
+    //triples post
+    trip_return_temp_post = sheet.getRange(i,81);
+    trip_supply_temp_post = sheet.getRange(i,82);
+    trip_static_post = sheet.getRange(i,83);
+    trip_airflow_post = sheet.getRange(i,84);
+    trip_c_amps1_post = sheet.getRange(i,85);
+    trip_c_amps2_post = sheet.getRange(i,86);
+    trip_c_amps3_post = sheet.getRange(i,87);
+    trip_c_volts1_post = sheet.getRange(i,88);
+    trip_c_volts2_post = sheet.getRange(i,89);
+    trip_c_volts3_post = sheet.getRange(i,90);
+    trip_e_amps1_post = sheet.getRange(i,91);
+    trip_e_amps2_post = sheet.getRange(i,92);
+    trip_e_amps3_post = sheet.getRange(i,93);
+    trip_e_volts1_post = sheet.getRange(i,94);
+    trip_e_volts2_post = sheet.getRange(i,95);
+    trip_e_volts3_post = sheet.getRange(i,96);
+
+    //start filling in triple columns
+    trip_return_temp_pre.setValue(tripleBase(return_temp_pre));
+    trip_supply_temp_pre.setValue(tripleBase(supply_temp_pre));
+    trip_static_pre.setValue(tripleBase(static_pre));
+    trip_airflow_pre.setValue(tripleBase(airflow_pre));
+    trip_c_amps1_pre.setValue(tripleBase(c_amps1_pre));
+    trip_c_amps2_pre.setValue(tripleBase(c_amps2_pre));
+    trip_c_amps3_pre.setValue(tripleBase(c_amps3_pre));
+    trip_c_volts1_pre.setValue(tripleBase(c_volts1_pre)); 
+    trip_c_volts2_pre.setValue(tripleBase(c_volts2_pre)); 
+    trip_c_volts3_pre.setValue(tripleBase(c_volts3_pre)); 
+    trip_e_amps1_pre.setValue(tripleBase(e_amps1_pre));
+    trip_e_amps2_pre.setValue(tripleBase(e_amps2_pre));
+    trip_e_amps3_pre.setValue(tripleBase(e_amps3_pre));
+    trip_e_volts1_pre.setValue(tripleBase(e_volts1_pre)); 
+    trip_e_volts2_pre.setValue(tripleBase(e_volts2_pre)); 
+    trip_e_volts3_pre.setValue(tripleBase(e_volts3_pre)); 
+    //tripled values post
+    trip_return_temp_post.setValue(tripleBase(return_temp_post)); 
+    trip_supply_temp_post.setValue(tripleBase(supply_temp_post)); 
+    trip_static_post.setValue(tripleBase(static_post));
+    trip_airflow_post.setValue(tripleBase(airflow_post)); 
+    trip_c_amps1_post.setValue(tripleBase(c_amps1_post)); 
+    trip_c_amps2_post.setValue(tripleBase(c_amps2_post)); 
+    trip_c_amps3_post.setValue(tripleBase(c_amps3_post)); 
+    trip_c_volts1_post.setValue(tripleBase(c_volts1_post)); 
+    trip_c_volts2_post.setValue(tripleBase(c_volts2_post)); 
+    trip_c_volts3_post.setValue(tripleBase(c_volts3_post)); 
+    trip_e_amps1_post.setValue(tripleBase(e_amps1_post)); 
+    trip_e_amps2_post.setValue(tripleBase(e_amps2_post)); 
+    trip_e_amps3_post.setValue(tripleBase(e_amps3_post)); 
+    trip_e_volts1_post.setValue(tripleBase(e_volts1_post)); 
+    trip_e_volts2_post.setValue(tripleBase(e_volts2_post)); 
+    trip_e_volts3_post.setValue(tripleBase(e_volts3_post)); 
+  }
+}
+
+function calculateWattsPre(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let rowLength = sheet.getLastRow();
+  const c_amps_error = "Cond Amps error. Check Condenser Amp Reading (Pre Clean) columns";
+  const c_volts_error = "Cond Volts error. Check Condenser Voltage Reading (Pre Clean) columns";
+  const e_amps_error = "Evap Amps error. Check Evaporator Amp Reading (Pre Clean) columns";
+  const e_volts_error = "Evap Volts error. Check Evaporator Voltage Reading (Pre Clean) columns";
+  let phase,systemtype,c_amps1,c_amps2,c_amps3,c_volts1,c_volts2,c_volts3,
+      e_amps1,e_amps2,e_amps3,e_volts1,e_volts2,e_volts3,watts,active_watts_cell;
+  
+  for (let i = 2; i <= rowLength; i++) {
+    active_watts_cell = sheet.getRange(i,77);
+    //determine phase of system
+    phase = sheet.getRange(i,17).getValue();
+    //determine system type
+    systemtype = sheet.getRange(i,12).getValue();
+    c_amps1 = sheet.getRange(i,24).getValue();
+    c_amps2 = sheet.getRange(i,25).getValue();
+    c_amps3 = sheet.getRange(i,26).getValue();
+    c_amps = calcAverage(c_amps1,c_amps2,c_amps3);
+    c_volts1 = sheet.getRange(i,27).getValue();
+    c_volts2 = sheet.getRange(i,28).getValue();
+    c_volts3 = sheet.getRange(i,29).getValue();
+    c_volts = calcAverage(c_volts1,c_volts2,c_volts3);
+    e_amps1 = sheet.getRange(i,30).getValue();
+    e_amps2 = sheet.getRange(i,31).getValue();
+    e_amps3 = sheet.getRange(i,32).getValue();
+    e_amps = calcAverage(e_amps1,e_amps2,e_amps3);
+    e_volts1 = sheet.getRange(i,33).getValue();
+    e_volts2 = sheet.getRange(i,34).getValue();
+    e_volts3 = sheet.getRange(i,35).getValue();
+    e_volts = calcAverage(e_volts1,e_volts2,e_volts3);
+    
+    //Calculating THREE Phase Power Input (Watts)
+    if(phase == "Three") {
+      //Split System
+      if(systemtype == "Split") {
+        watts = ((c_amps*c_volts)+(e_amps*e_volts))*Math.sqrt(3)
+      }
+      //Packaged System
+      else {
+        watts = (c_amps*c_volts)
+      }
+    }
+    //Calculating SINGLE Phase Power Input (Watts)
+    else {
+      //Split System
+      if(systemtype == "Split") {
+        watts = (c_amps*c_volts)+(e_amps*e_volts)
+      }
+      //Packaged System
+      else {
+        watts = (c_amps*c_volts)
+      }
+    }
+
+    if(isNaN(c_amps)) {
+      active_watts_cell.setValue(c_amps_error);
+    } 
+    else if(isNaN(c_volts)){
+      active_watts_cell.setValue(c_volts_error);
+    }
+    else if(isNaN(e_amps)){
+      active_watts_cell.setValue(e_amps_error);
+    }
+    else if(isNaN(e_volts)){
+      active_watts_cell.setValue(e_volts_error);
+    }
+    else
+      watts = roundToTwo(watts);
+      active_watts_cell.setValue(watts);
+  } 
+}
+
+function calculateWattsPost(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let rowLength = sheet.getLastRow();
+  const c_amps_error = "Cond Amps error. Check Condenser Amp Reading (Post Clean) columns";
+  const c_volts_error = "Cond Volts error. Check Condenser Voltage Reading (Post Clean) columns";
+  const e_amps_error = "Evap Amps error. Check Evaporator Amp Reading (Post Clean) columns";
+  const e_volts_error = "Evap Volts error. Check Evaporator Voltage Reading (Post Clean) columns";
+  let phase,systemtype,c_amps1,c_amps2,c_amps3,c_volts1,c_volts2,c_volts3,
+      e_amps1,e_amps2,e_amps3,e_volts1,e_volts2,e_volts3,watts,active_watts_cell;  
+  
+  for (let i = 2; i <= rowLength; i++) {
+    active_watts_cell = sheet.getRange(i,78);
+    //determine phase of system
+    phase = sheet.getRange(i,17).getValue();
+    //determine system type
+    systemtype = sheet.getRange(i,12).getValue();
+    c_amps1 = sheet.getRange(i,40).getValue();
+    c_amps2 = sheet.getRange(i,41).getValue();
+    c_amps3 = sheet.getRange(i,42).getValue();
+    c_amps = calcAverage(c_amps1,c_amps2,c_amps3);
+    c_volts1 = sheet.getRange(i,43).getValue();
+    c_volts2 = sheet.getRange(i,44).getValue();
+    c_volts3 = sheet.getRange(i,45).getValue();
+    c_volts = calcAverage(c_volts1,c_volts2,c_volts3);
+    e_amps1 = sheet.getRange(i,46).getValue();
+    e_amps2 = sheet.getRange(i,47).getValue();
+    e_amps3 = sheet.getRange(i,48).getValue();
+    e_amps = calcAverage(e_amps1,e_amps2,e_amps3);
+    e_volts1 = sheet.getRange(i,49).getValue();
+    e_volts2 = sheet.getRange(i,50).getValue();
+    e_volts3 = sheet.getRange(i,51).getValue();
+    e_volts = calcAverage(e_volts1,e_volts2,e_volts3);
+    
+    //Calculating THREE Phase Power Input (Watts)
+    if(phase == "Three") {
+      //Split System
+      if(systemtype == "Split") {
+        watts = ((c_amps*c_volts)+(e_amps*e_volts))*Math.sqrt(3)
+      }
+      //Packaged System
+      else {
+        watts = (c_amps*c_volts)
+      }
+    }
+    //Calculating SINGLE Phase Power Input (Watts)
+    else {
+      //Split System
+      if(systemtype == "Split") {
+        watts = (c_amps*c_volts)+(e_amps*e_volts)
+      }
+      //Packaged System
+      else {
+        watts = (c_amps*c_volts)
+      }
+    }
+
+    if(isNaN(c_amps)) {
+      active_watts_cell.setValue(c_amps_error);
+    }
+    else if(isNaN(c_volts)){
+      active_watts_cell.setValue(c_volts_error);
+    }
+    else if(isNaN(e_amps)){
+      active_watts_cell.setValue(e_amps_error);
+    }
+    else if(isNaN(e_volts)){
+      active_watts_cell.setValue(e_volts_error);
+    }
+    else {
+      watts = roundToTwo(watts);
+      active_watts_cell.setValue(watts);
+    }
+  } 
+}
+
+function checkEERs(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let rowLength = sheet.getLastRow();
+
+  for (let i = 2; i <= rowLength;i++){
+    let pre_eer = sheet.getRange(i,68).getValue();
+    let active_pre = sheet.getRange(i,68);
+    let post_eer = sheet.getRange(i,69).getValue();
+    let active_post = sheet.getRange(i,69);
+    
+    if(pre_eer < 5 || pre_eer > 15){
+      active_pre.setBackground('#31a1ef');
+    }
+    else {
+      active_pre.setBackground(null);
+    }
+
+    if (post_eer < 5 || post_eer > 15){
+      active_post.setBackground('#31a1ef');
+    }
+    else{
+      active_pre.setBackground(null);
+    }
+
+    if(pre_eer > post_eer){
+      active_pre.setBackground('red');
+      active_post.setBackground('red');
+    }
+  }
+}
