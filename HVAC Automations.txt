@@ -1,4 +1,4 @@
-//Version 2.2
+//Version 2.3
 
 function onOpen(){
   const ui = SpreadsheetApp.getUi();
@@ -13,6 +13,121 @@ function onOpen(){
     .addItem('Calculate Incentive by Tonnage','menuGetIncentiveByTons')
     .addToUi();
 }
+
+function onFormSubmit(e) {
+  const sheet = e.source.getActiveSheet();
+  const row = e.range.getRow();
+  const values = e.values;
+  buildCalcHeaders();
+
+  // === Calculate all derived values in memory ===
+  const incentive = calcIncentiveByBTU(values[12]);
+
+  const wattsPre = calculateWattsPre(values);
+  const wattsPost = calculateWattsPost(values);
+
+  const cfmPre = calculateCfm(values[15]);
+  const cfmPost = calculateCfm(values[15]);
+
+  const deltaTPre = calculateDeltaT(values[19], values[20]);
+  const deltaTPost = calculateDeltaT(values[35], values[36]);
+
+  const btuPre = calculateBtus(deltaTPre, cfmPre);
+  const btuPost = calculateBtus(deltaTPost, cfmPost);
+
+  const eerPre = calculateEER(btuPre, wattsPre);
+  const eerPost = calculateEER(btuPost, wattsPost);
+
+  const kwhSaved = calculatekWhSaved(values[12], eerPre, eerPost);
+
+  // === Write all results in one batch ===
+  const results = [
+    [
+      eerPre,     // col 72
+      eerPost,    // col 73
+      incentive,  // col 74
+      cfmPre,     // col 75
+      cfmPost,    // col 76
+      deltaTPre,  // col 77
+      deltaTPost, // col 78
+      btuPre,     // col 79
+      btuPost,    // col 80
+      wattsPre,   // col 81
+      wattsPost,  // col 82
+      kwhSaved    // col 83
+    ]
+  ];
+
+  // Starting at column 72, write across all these values at once
+  sheet.getRange(row, 72, 1, results[0].length).setValues(results);
+
+    // === Apply color coding ===
+  const eerPreRange = sheet.getRange(row, 72);
+  const eerPostRange = sheet.getRange(row, 73);
+  const kwhRange = sheet.getRange(row, 83);
+
+  // Define helper to choose colors
+  function getEerColor(value) {
+    if (value == null || isNaN(value)) return 'white';
+    if (value < 5 || value > 15) return '#ff9999'; // red
+    if (value >= 5 && value <= 15) return '#b9f6ca'; // green
+  }
+
+  function getDeltaTColor(deltaTPre,deltaTPost) {
+    let color;
+    if (value == null || isNaN(value)) color =  'white';
+    if (deltaTPre > deltaTPost) color = '#ff9999'; // red
+    if (deltaTPre < deltaTPost) color = '#b9f6ca'; // green
+
+    const deltaTPreRange = sheet.getRange(row,77);
+    const deltaTPostRange = sheet.getRange(row,78);
+
+    deltaTPreRange.setBackground(color);
+    deltaTPostRange.setBackground(color);
+  }
+
+  // Define helper to choose colors
+  function getKwhColor(value) {
+    if (value == null || isNaN(value)) return 'white';
+    if (value <=0) return '#ff9999'; // red
+  }
+
+  // Apply colors
+  eerPreRange.setBackground(getEerColor(eerPre));
+  eerPostRange.setBackground(getEerColor(eerPost));
+  kwhRange.setBackground(getKwhColor(kwhSaved));
+}
+
+
+// function onFormSubmit(e){
+//   const sheet = SpreadsheetApp.getActiveSheet();
+//   const currentRow = e.range.getRow();
+//   const values = e.values;
+//   //buildCalcHeaders();
+//   let incentive = sheet.getRange(currentRow,70).setValue(calcIncentiveByBTU(values[12]));
+//   let watts_pre_col = sheet.getRange(currentRow,77).setValue(calculateWattsPre(values));
+//   let watts_pre = watts_pre_col.getValue();
+//   let watts_post_col = sheet.getRange(currentRow,78).setValue(calculateWattsPost(values));
+//   let watts_post = watts_post_col.getValue();
+//   let cfm_pre_col = sheet.getRange(currentRow,71).setValue(calculateCfm(values[15]));
+//   let cfm_pre = cfm_pre_col.getValue();
+//   let deltaT_pre_col = sheet.getRange(currentRow,73).setValue(calculateDeltaT(values[19],values[20]));
+//   let deltaT_pre = deltaT_pre_col.getValue();
+//   let btu_pre_col = sheet.getRange(currentRow,75).setValue(calculateBtus(deltaT_pre,cfm_pre));
+//   let btu_pre = btu_pre_col.getValue();
+//   let eer_pre_col = sheet.getRange(currentRow,68).setValue(calculateEER(btu_pre,watts_pre));
+//   let eer_pre = eer_pre_col.getValue();
+//   //post values
+//   let cfm_post_col = sheet.getRange(currentRow,72).setValue(calculateCfm(values[15]));
+//   let cfm_post = cfm_post_col.getValue();
+//   let deltaT_post_col = sheet.getRange(currentRow,74).setValue(calculateDeltaT(values[35],values[36]));
+//   let deltaT_post = deltaT_post_col.getValue();
+//   let btu_post_col = sheet.getRange(currentRow,76).setValue(calculateBtus(deltaT_post,cfm_post));
+//   let btu_post = btu_post_col.getValue();
+//   let eer_post_col = sheet.getRange(currentRow,69).setValue(calculateEER(btu_post,watts_post));
+//   let eer_post = eer_post_col.getValue();
+//   let kwh_saved = sheet.getRange(currentRow,79).setValue(calculatekWhSaved(values[12],eer_pre,eer_post))
+// }
 
 /**
  * CUSTOM MENU FUNCTIONS
@@ -439,7 +554,8 @@ function menuGetIncentiveByTons(){
 
 function calculateCfm(tonnage_cell){
   let cfm;
-  let tonnage = tonnage_cell;
+  let tonnage = parseFloat(tonnage_cell);
+  Logger.log("tonnage inside calc cfm: "+tonnage);
 
   //calc cfm
   cfm = (350*tonnage)
@@ -447,10 +563,58 @@ function calculateCfm(tonnage_cell){
   return cfm;
 }
 
+function calcIncentiveByBTU(btus_in){
+  let incentive = 0;
+  const btuError = "Bad BTU, check the BTU column for issues.";
+  const btus = parseFloat(btus_in);
+
+  //calculate the incentive based on BTUs
+  if (btus < 18000) {
+    incentive = 0;
+  }
+  else if (btus >= 18000 && btus <= 42000){
+    incentive = 225;
+  }
+  else if (btus >= 42001 && btus <= 60000){
+    incentive = 275;
+  }
+  else if (btus >= 60001 && btus <= 120000) {
+    incentive = 450;
+  }
+  else if (btus >= 120001 && btus <= 180000) {
+    incentive = 650;
+  }
+  else if (btus >= 180001 && btus <= 300000) {
+    incentive = 800;
+  }
+  else if (btus >= 300001 && btus <= 360000) {
+    incentive = 850;
+  }
+  else if (btus >= 360001 && btus <= 600000) {
+    incentive = 1400;
+  }
+  else if (btus >= 600001 && btus <= 960000) {
+    incentive = 2000;
+  }
+  else if (btus >= 960001) {
+    incentive = 2500;
+  }
+
+  //Fill in the Incentive Column with the determined incentive value
+  if (incentive > 0){
+    return incentive;
+  }
+  else {
+    return btuError;
+  }
+}
+
 function calculateDeltaT(return_temp, supply_temp){
   let deltaT;
-  let rt_temp = return_temp;
-  let sup_temp = supply_temp;
+  let rt_temp = parseFloat(return_temp);
+  let sup_temp = parseFloat(supply_temp);
+  Logger.log("return temp inside calc delta t: "+rt_temp);
+  Logger.log("supply temp inside calc delta t: "+sup_temp);
 
   deltaT = roundToTwo(rt_temp - sup_temp);
 
@@ -460,10 +624,15 @@ function calculateDeltaT(return_temp, supply_temp){
 
 function calculateBtus(deltaT_in,cfm_in){
   let btus;
-  let deltaT = deltaT_in;
-  let cfms = cfm_in;
+  let deltaT = parseFloat(deltaT_in);
+  let cfms = parseFloat(cfm_in);
+  Logger.log("delta T inside calc btus: "+deltaT);
+  Logger.log("cfm inside calc btus: "+cfms);
 
   btus = roundToTwo((deltaT * cfms) * 1.08);
+
+  Logger.log("btus: "+btus);
+
 
   return btus;
 }
@@ -544,26 +713,28 @@ function roundToTwo(num){
 }
 
 function calcAverage(num1_in,num2_in,num3_in){
-  let base1 = num1_in;
-  let base2 = num2_in;
-  let base3 = num3_in;
+  const base1 = parseFloat(num1_in);
+  const base2 = parseFloat(num2_in);
+  const base3 = parseFloat(num3_in);
   let average;
   
-  //cant be 3 phase
-  if(base2 == null || base2 == 0){
-    average = base1;
-  }
-
-  //cant be 3 phase
-  if(base3 == null || base3 == 0){
-    if(base2 != null && base2 != 0){
-      average = (base1+base2)/2;
-    }
-  }
-
-  if(base3 != null && base3 != 0){
+  //must be 3 phase
+  if(base3 != null && base3 != 0 && !isNaN(base3)){
     average = (base1+base2+base3)/3;
   }
+  //cant be 3 phase, test for 1 phase 2 pole
+  else if(base2 != null && base2 != 0 && !isNaN(base2)){
+    average = (base1+base2)/2;
+  }
+  //cant be 3 phase, must be 1 phase 1 pole
+  else if(base2 == null || base2 == 0){
+    average = base1;
+  }
+  else {
+    average = 0;
+  }
+  average = roundToTwo(average);
+
   return average;
 }
 
@@ -620,7 +791,7 @@ function buildCalcHeaders(){
   let sheet = SpreadsheetApp.getActiveSheet();
   const headers = [['MX Contract','EER Pre','EER Post','Incentive','CFMs (Pre Clean)','CFMs (Post Clean)','DeltaT (Pre Clean)','DeltaT (Post Clean)','BTU Output (Pre Clean)','BTU Output (Post Clean)','Watts (Pre Clean)','Watts (Post Clean)','kWh Saved']];
   //adjust to desired range [13]
-  let range = sheet.getRange('BO1:CA1');
+  let range = sheet.getRange('BS1:CE1');
   let testCell = sheet.getRange(1,67).getValue();
   if(testCell != "MX Contract"){
     range.setValues(headers);
@@ -940,3 +1111,147 @@ function checkEERs(){
     }
   }
 }
+
+// OVERLOAD FUNCTIONS
+//overloaded for onFormSubmit()
+function calculateWattsPre(values){
+  const rowValues = values;
+  const c_amps_error = "Cond Amps error. Check Condenser Amp Reading (Pre Clean) columns";
+  const c_volts_error = "Cond Volts error. Check Condenser Voltage Reading (Pre Clean) columns";
+  const e_amps_error = "Evap Amps error. Check Evaporator Amp Reading (Pre Clean) columns";
+  const e_volts_error = "Evap Volts error. Check Evaporator Voltage Reading (Pre Clean) columns";
+  let phase,systemtype,c_amps1,c_amps2,c_amps3,c_volts1,c_volts2,c_volts3,
+      e_amps1,e_amps2,e_amps3,e_volts1,e_volts2,e_volts3,watts;
+
+  //determine phase of system
+  phase = rowValues[16];
+  //determine system type
+  systemtype = rowValues[11];
+  c_amps1 = rowValues[23];
+  c_amps2 = rowValues[24];
+  c_amps3 = rowValues[25];
+  c_amps = calcAverage(c_amps1,c_amps2,c_amps3);
+  c_volts1 = rowValues[26];
+  c_volts2 = rowValues[27];
+  c_volts3 = rowValues[28];
+  c_volts = calcAverage(c_volts1,c_volts2,c_volts3);
+  e_amps1 = rowValues[29];
+  e_amps2 = rowValues[30];
+  e_amps3 = rowValues[31];
+  e_amps = calcAverage(e_amps1,e_amps2,e_amps3);
+  e_volts1 = rowValues[32];
+  e_volts2 = rowValues[33];
+  e_volts3 = rowValues[34];
+  e_volts = calcAverage(e_volts1,e_volts2,e_volts3);
+  
+  //Calculating THREE Phase Power Input (Watts)
+  if(phase == "Three") {
+    //Split System
+    if(systemtype == "Split") {
+      watts = ((c_amps*c_volts)+(e_amps*e_volts))*Math.sqrt(3)
+    }
+    //Packaged System
+    else {
+      watts = (c_amps*c_volts)
+    }
+  }
+  //Calculating SINGLE Phase Power Input (Watts)
+  else {
+    //Split System
+    if(systemtype == "Split") {
+      watts = (c_amps*c_volts)+(e_amps*e_volts)
+    }
+    //Packaged System
+    else {
+      watts = (c_amps*c_volts)
+    }
+  }
+
+  if(isNaN(c_amps)) {
+    return c_amps_error;
+  } 
+  else if(isNaN(c_volts)){
+    return c_volts_error;
+  }
+  else if(isNaN(e_amps)){
+    return e_amps_error;
+  }
+  else if(isNaN(e_volts)){
+    return e_volts_error;
+  }
+  else
+    watts = roundToTwo(watts);
+    return watts;
+}
+
+//overload for onFormSubmit()
+function calculateWattsPost(values){
+  const rowValues = values;
+  const c_amps_error = "Cond Amps error. Check Condenser Amp Reading (Post Clean) columns";
+  const c_volts_error = "Cond Volts error. Check Condenser Voltage Reading (Post Clean) columns";
+  const e_amps_error = "Evap Amps error. Check Evaporator Amp Reading (Post Clean) columns";
+  const e_volts_error = "Evap Volts error. Check Evaporator Voltage Reading (Post Clean) columns";
+  let phase,systemtype,c_amps1,c_amps2,c_amps3,c_volts1,c_volts2,c_volts3,
+      e_amps1,e_amps2,e_amps3,e_volts1,e_volts2,e_volts3,watts; 
+
+  //determine phase of system
+  phase = rowValues[16];
+  //determine system type
+  systemtype = rowValues[11];
+  c_amps1 = rowValues[39];
+  c_amps2 = rowValues[40];
+  c_amps3 = rowValues[41];
+  c_amps = calcAverage(c_amps1,c_amps2,c_amps3);
+  c_volts1 = rowValues[42];
+  c_volts2 = rowValues[43];
+  c_volts3 = rowValues[44];
+  c_volts = calcAverage(c_volts1,c_volts2,c_volts3);
+  e_amps1 = rowValues[45];
+  e_amps2 = rowValues[46];
+  e_amps3 = rowValues[47];
+  e_amps = calcAverage(e_amps1,e_amps2,e_amps3);
+  e_volts1 = rowValues[48];
+  e_volts2 = rowValues[49];
+  e_volts3 = rowValues[50];
+  e_volts = calcAverage(e_volts1,e_volts2,e_volts3); 
+  
+  //Calculating THREE Phase Power Input (Watts)
+  if(phase == "Three") {
+    //Split System
+    if(systemtype == "Split") {
+      watts = ((c_amps*c_volts)+(e_amps*e_volts))*Math.sqrt(3)
+    }
+    //Packaged System
+    else {
+      watts = (c_amps*c_volts)
+    }
+  }
+  //Calculating SINGLE Phase Power Input (Watts)
+  else {
+    //Split System
+    if(systemtype == "Split") {
+      watts = (c_amps*c_volts)+(e_amps*e_volts)
+    }
+    //Packaged System
+    else {
+      watts = (c_amps*c_volts)
+    }
+  }
+
+  if(isNaN(c_amps)) {
+    return c_amps_error;
+  }
+  else if(isNaN(c_volts)){
+    return c_volts_error;
+  }
+  else if(isNaN(e_amps)){
+    return e_amps_error;
+  }
+  else if(isNaN(e_volts)){
+    return e_volts_error;
+  }
+  else {
+    watts = roundToTwo(watts);
+    return watts;
+  }
+} 
