@@ -1,0 +1,427 @@
+/** ===
+ * Calculations
+ * ===
+ */
+
+//done
+function calculateCfm(tonnage_cell){
+  const tonnage = parseFloat(tonnage_cell);
+
+  return (350*tonnage);
+}
+//done
+function calcIncentiveByBTU(btus_in){
+  const btus = parseFloat(btus_in);
+
+  let incentive = 
+    btus < 18000 ? 0
+    : btus <= 42000 ? 225
+    : btus <= 60000 ? 275
+    : btus <= 120000 ? 450
+    : btus <= 180000 ? 650
+    : btus <= 300000 ? 800
+    : btus <= 360000 ? 850
+    : btus <= 600000 ? 1400
+    : btus <= 960000 ? 2000
+    : 2500
+
+  //Fill in the Incentive Column with the determined incentive value
+  return incentive >= 0 ? incentive : errors.btus;
+}
+//done
+function calculateDeltaT(return_temp, supply_temp){
+  const rt_temp = parseFloat(return_temp);
+  const sup_temp = parseFloat(supply_temp);
+
+  return roundToTwo(rt_temp - sup_temp);
+}
+//done
+function calculateBtus(deltaT_in,cfm_in){
+  const deltaT = parseFloat(deltaT_in);
+  const cfm = parseFloat(cfm_in);
+
+  return roundToTwo(deltaT * cfm * 1.08);
+}
+//needs work
+function menuGetIncentiveByTons(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let incentive = 0;
+  let rowLength = sheet.getLastRow();
+  const tonError = "Bad Tons, check the Tonnage column for issues.";
+  let tons;
+
+  for (let i = 2; i <= rowLength; i++) {
+    tons = sheet.getRange(i,16).getValue();
+    active_incentive_cell = sheet.getRange(i,74);
+
+    //calculate the incentive based on Tons
+    if (tons < 1.5) {
+      incentive = 0;
+    }
+    else if (tons >= 1.5 && tons <= 3.5){
+      incentive = 225;
+    }
+    else if (tons >= 3.6 && tons <= 5){
+      incentive = 275;
+    }
+    else if (tons >= 5.1 && tons <= 10) {
+      incentive = 450;
+    }
+    else if (tons >= 10.1 && tons <= 15) {
+      incentive = 650;
+    }
+    else if (tons >= 15.1 && tons <= 25) {
+      incentive = 800;
+    }
+    else if (tons >= 25.1 && tons <= 30) {
+      incentive = 850;
+    }
+    else if (tons >= 30.1 && tons <= 50) {
+      incentive = 1400;
+    }
+    else if (tons >= 50.1 && tons <= 80) {
+      incentive = 2000;
+    }
+    else if (tons >= 80.1) {
+      incentive = 2500;
+    }
+
+    //Fill in the Incentive Column with the determined incentive value
+    if (incentive > 0){
+      active_incentive_cell.setValue(incentive);
+    }
+    else {
+      active_incentive_cell.setValue(tonError);
+    }
+  }
+}
+//done
+function isThreePhase(phases){
+  return phases === "Three" ? "Yes" : "No";
+}
+//done
+function calculateEER(btus_in,watts_in){
+  if(isNaN(btus_in))  return errors.btus;
+  if(isNaN(watts_in)) return errors.watts;
+
+  return roundToTwo(btus_in / watts_in);
+}
+//done
+function calculatekWhSaved(btus,pre_eer,post_eer){
+  if(isNaN(btus))     return errors.btus;
+  if(isNaN(pre_eer))  return errors.pre_eer;
+  if(isNaN(post_eer)) return errors.post_eer;
+  
+  const kwh_saved = btus*0.001*((1/pre_eer)-(1/post_eer))*1637;
+  return roundToTwo(kwh_saved);
+}
+//done
+function calcAverage(num1_in,num2_in,num3_in){
+  const base1 = parseFloat(num1_in);
+  const base2 = parseFloat(num2_in);
+  const base3 = parseFloat(num3_in);
+
+  const base1Valid = !isNaN(base1);
+  const base2Valid = !isNaN(base2);
+  const base3Valid = !isNaN(base3);
+  
+  // --- Three-phase: all 3 readings valid (including zeros) ---
+  if (base1Valid && base2Valid && base3Valid) return roundToTwo((base1 + base2 + base3) / 3);
+
+  // --- Two-pole single phase: first 2 readings valid ---
+  if (base1Valid && base2Valid) return roundToTwo((base1 + base2) / 2);
+
+  // --- One-pole single phase: only first reading valid ---
+  if (base1Valid) return roundToTwo(base1);
+
+  // --- No usable readings ---
+  return 0;
+}
+//done
+function calcTriples(){
+  const triplesSheet = ss.getSheetByName("Triples");
+  const rowLength = triplesSheet.getLastRow();
+  const colLength = triplesSheet.getLastColumn();
+
+  const sheetValues = triplesSheet.getRange(2,1,rowLength-1,colLength).getValues();
+
+  for (let i = 0; i < sheetValues.length; i++) {
+    const row = sheetValues[i];
+    const activeRow = i+2;
+
+    const pre_return_temp = tripleTemps(row[19]);
+    const post_return_temp = tripleTemps(row[35]);
+
+    const pre_supply_temp = tripleTemps(row[20]);
+    const post_supply_temp = tripleTemps(row[36]);
+
+    const pre_static = tripleBase(row[21]);
+    const post_static = tripleBase(row[37]);
+    const pre_airflow = tripleBase(row[22]);
+    const post_airflow = tripleBase(row[38]);
+
+    const pre_c_amps1 = tripleBase(row[23]);
+    const pre_c_amps2 = tripleBase(row[24]);
+    const pre_c_amps3 = tripleBase(row[25]);
+    const pre_c_volts1 = tripleBase(row[26]);
+    const pre_c_volts2 = tripleBase(row[27]);
+    const pre_c_volts3 = tripleBase(row[28]);
+
+    const pre_e_amps1 = tripleBase(row[29]);
+    const pre_e_amps2 = tripleBase(row[30]);
+    const pre_e_amps3 = tripleBase(row[31]);
+    const pre_e_volts1 = tripleBase(row[32]);
+    const pre_e_volts2 = tripleBase(row[33]);
+    const pre_e_volts3 = tripleBase(row[34]);
+
+    const post_c_amps1 = tripleBase(row[39]);
+    const post_c_amps2 = tripleBase(row[40]);
+    const post_c_amps3 = tripleBase(row[41]);
+    const post_c_volts1 = tripleBase(row[42]);
+    const post_c_volts2 = tripleBase(row[43]);
+    const post_c_volts3 = tripleBase(row[44]);
+
+    const post_e_amps1 = tripleBase(row[45]);
+    const post_e_amps2 = tripleBase(row[46]);
+    const post_e_amps3 = tripleBase(row[47]);
+    const post_e_volts1 = tripleBase(row[48]);
+    const post_e_volts2 = tripleBase(row[49]);
+    const post_e_volts3 = tripleBase(row[50]);
+
+    const results = [
+      [
+        pre_return_temp, //col 70
+        pre_supply_temp,//col 71
+        pre_static,//col 72
+        pre_airflow,//col 73
+        pre_c_amps1,//col 74
+        pre_c_amps2,//col 75
+        pre_c_amps3,     //col 76
+        pre_c_volts1,//col 77
+        pre_c_volts2,//col 78
+        pre_c_volts3,//col 79
+        pre_e_amps1,//col 80
+        pre_e_amps2,//col 81
+        pre_e_amps3,     //col 82
+        pre_e_volts1,//col 83
+        pre_e_volts2,//col 84
+        pre_e_volts3,//col 85
+        post_return_temp,//col 86
+        post_supply_temp,//col 87
+        post_static,//col 88
+        post_airflow,//col 89
+        post_c_amps1,//col 90
+        post_c_amps2,//col 91
+        post_c_amps3,  //col 92
+        post_c_volts1,//col 93
+        post_c_volts2,//col 94
+        post_c_volts3,//col 95
+        post_e_amps1,//col 96
+        post_e_amps2,//col 97
+        post_e_amps3,  //col 98
+        post_e_volts1,//col 99
+        post_e_volts2,//col 100
+        post_e_volts3  //col 101
+      ]
+    ];
+
+  // Starting at column 71, write across all these values at once
+  triplesSheet.getRange(activeRow, 71, 1, results[0].length).setValues(results);
+  }
+}
+//done
+function calculateWattsPre(row){
+  const isThree = row[16] === "Three";
+  const isSplit = row[11] === "Split";
+
+  const c_amps = calcAverage(row[23],row[24],row[25]);
+  const c_volts = calcAverage(row[26],row[27],row[28]);
+  const e_amps = calcAverage(row[29],row[30],row[31]);
+  const e_volts = calcAverage(row[32],row[33],row[34]);
+
+  if(isNaN(c_amps))   return errors.c_amps_pre;
+  if(isNaN(c_volts))  return errors.c_volts_pre;
+
+  let watts = c_amps * c_volts;
+
+  if(isSplit){
+    if(isNaN(e_amps))   return errors.e_amps_pre;
+    if(isNaN(e_volts))   return errors.e_volts_pre;
+    if(isSplit) watts += e_amps * e_volts;
+  }
+  
+  if(isThree) watts *= Math.sqrt(3);
+
+  return roundToTwo(watts);
+} 
+//done
+function calculateWattsPost(row){
+  const isThree = row[16] === "Three";
+  const isSplit = row[11] === "Split";
+
+  const c_amps = calcAverage(row[39],row[40],row[41]);
+  const c_volts = calcAverage(row[42],row[43],row[44]);
+  const e_amps = calcAverage(row[45],row[46],row[47]);
+  const e_volts = calcAverage(row[48],row[49],row[50]);
+
+  if(isNaN(c_amps))   return errors.c_amps_post;
+  if(isNaN(c_volts))  return errors.c_volts_post;
+
+  let watts = c_amps * c_volts;
+
+  if(isSplit){
+    if(isNaN(e_amps))   return errors.e_amps_post;
+    if(isNaN(e_volts))   return errors.e_volts_post;
+    watts += e_amps * e_volts;
+  }
+  
+  if(isThree) watts *= Math.sqrt(3);
+
+  return roundToTwo(watts);
+} 
+//done
+//for onFormSubmit()
+function calculateWattsPre_fs(values){    
+  const isThree = values[16] === "Three";
+  const isSplit = values[11] === "Split";
+
+  const c_amps = calcAverage(values[23],values[24],values[25]);
+  const c_volts = calcAverage(values[26],values[27],values[28]);
+  const e_amps = calcAverage(values[29],values[30],values[31]);
+  const e_volts = calcAverage(values[32],values[33],values[34]);
+
+  if(isNaN(c_amps)) return errors.c_amps_pre;
+  if(isNaN(c_volts)) return errors.c_volts_pre;
+
+  let watts = c_amps * c_volts;
+
+  if(isSplit){
+    if(isNaN(e_amps)) return errors.e_amps_pre;
+    if(isNaN(e_volts)) return errors.e_volts_pre;
+    watts += e_amps * e_volts;
+  }
+
+  if(isThree) watts *= Math.sqrt(3);
+
+  return roundToTwo(watts);
+}
+//done
+//for onFormSubmit()
+function calculateWattsPost_fs(values){
+  const isThree = values[16] === "Three";
+  const isSplit = values[11] === "Split";
+
+  const c_amps = calcAverage(values[39],values[40],values[41]);
+  const c_volts = calcAverage(values[42],values[43],values[44]);
+  const e_amps = calcAverage(values[45],values[46],values[47]);
+  const e_volts = calcAverage(values[48],values[49],values[50]);
+
+  if(isNaN(c_amps)) return errors.c_amps_pre;
+  if(isNaN(c_volts)) return errors.c_volts_pre;
+
+  let watts = c_amps * c_volts;
+
+  if(isSplit){
+    if(isNaN(e_amps)) return errors.e_amps_pre;
+    if(isNaN(e_volts)) return errors.e_volts_pre;
+    watts += e_amps * e_volts;
+  }
+
+  if(isThree) watts *= Math.sqrt(3);
+
+  return roundToTwo(watts);
+}
+
+/**
+ * ===
+ * Utility
+ * ===
+ */
+
+//done
+function roundToTwo(num){
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+}
+//done
+function getRandom(min, max){
+  const minCeiled = Math.ceil(min);
+  const maxFloored = Math.floor(max);
+  return Math.floor(Math.random() * (maxFloored - minCeiled + 1) + minCeiled); // The maximum is inclusive and the minimum is inclusive
+}
+// done
+function getMakeModel(make_in,model_in){
+  return make_in +" "+ model_in;
+}
+//done
+// Define helper to choose colors for EERs
+function getEerColor(value) {
+  if (value == null || isNaN(value)) return 'white';
+  if (value < 5 || value > 15) return '#ff9999'; // red
+  if (value >= 5 && value <= 15) return '#b9f6ca'; // green
+}
+//done
+// Define helper to choose colors kWh
+function getKwhColor(value) {
+  if (value == null || isNaN(value)) return 'white';
+  if (value <=0) return '#ff9999'; // red
+}
+//needs work. need to turn pre and post desired color
+// Define helper to choose colors for DeltaT
+function getDeltaTColor(pre_deltaT,post_deltaT) {
+  if (value == null || isNaN(value)) return 'white';
+  if (pre_deltaT > post_deltaT) return '#ff9999'; // red
+  if (pre_deltaT < post_deltaT) return '#b9f6ca'; // green
+}
+//need to fix
+function checkEERs(){
+  let sheet = SpreadsheetApp.getActiveSheet();
+  let rowLength = sheet.getLastRow();
+
+  for (let i = 2; i <= rowLength;i++){
+    let pre_eer = sheet.getRange(i,68).getValue();
+    let active_pre = sheet.getRange(i,68);
+    let post_eer = sheet.getRange(i,69).getValue();
+    let active_post = sheet.getRange(i,69);
+    
+    if(pre_eer < 5 || pre_eer > 15){
+      active_pre.setBackground('#31a1ef');
+    }
+    else {
+      active_pre.setBackground(null);
+    }
+
+    if (post_eer < 5 || post_eer > 15){
+      active_post.setBackground('#31a1ef');
+    }
+    else{
+      active_pre.setBackground(null);
+    }
+
+    if(pre_eer > post_eer){
+      active_pre.setBackground('red');
+      active_post.setBackground('red');
+    }
+  }
+}
+//done
+function tripleBase(base){
+  const diff = (base*.1);
+  const upper = roundToTwo(base+diff);
+  const lower = roundToTwo(base-diff);
+
+  if(base == null || base == 0) return 0;
+  return base+' / '+lower+' / '+upper;
+}
+//done
+function tripleTemps(base){
+  const diff = getRandom(0.1,1);
+  const upper = roundToTwo(base+diff);
+  const lower = roundToTwo(base-diff);
+
+  if(base == null || base == 0) return 0;
+  return base+' / '+lower+' / '+upper;
+}
+
+function unitChange(unit_type){
+  return unit_type === "Air Handler" ? "A/C Tune-Up" : "Heat Pump Tune-Up";
+}

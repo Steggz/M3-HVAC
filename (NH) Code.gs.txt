@@ -1,0 +1,444 @@
+//Version 2.4
+
+function onOpen(){
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Data Calculations')
+    .addItem('Build Calcs Sheet','menuBuildCalcsSheet')
+    .addItem('Build ENO Averages Sheet','menuBuildAveragesSheet')
+    .addItem('Build Triples Sheet','menuBuildTriplesSheet')
+    .addItem('Build P3 Submission Sheet','menuCreateP3SubmissionSheet')
+    .addItem('Build ENO Workbook Sheet','menuCreateENOWorkbookSheet')
+    .addItem('Check EERs','menuCheckEERs')
+    .addItem('Calculate Incentive by BTUs','menuGetIncentiveByBTU')
+    .addItem('Calculate Incentive by Tonnage','menuGetIncentiveByTons')
+    .addToUi();
+}
+
+//  === GLOBALS === //
+const ss = SpreadsheetApp.getActiveSpreadsheet();
+const respSheet = ss.getSheetByName("Form Responses 1");
+
+const errors = {
+  btus: "Bad BTUs, check the BTU Cooling column for issues.",
+  tonnage: "Bad Tonnage, check the Tonnage column for issues.",
+  watts: "Bad Watts, check the Watts (Pre Clean) and Watts (Post Clean) columns for issues.",
+  pre_eer: "EER Pre Error. Check the EER Pre column",
+  post_eer: "EER Post Error. Check the EER Post column",
+  c_amps_pre: "Cond Amps error. Check Condenser Amp Reading (Pre Clean) columns",
+  c_amps_post: "Cond Amps error. Check Condenser Amp Reading (Post Clean) columns",
+  c_volts_pre: "Cond Volts error. Check Condenser Voltage Reading (Pre Clean) columns",
+  c_volts_post: "Cond Volts error. Check Condenser Voltage Reading (Post Clean) columns",
+  e_amps_pre: "Evap Amps error. Check Evaporator Amp Reading (Pre Clean) columns",
+  e_amps_post: "Evap Amps error. Check Evaporator Amp Reading (Post Clean) columns",
+  e_volts_pre: "Evap Volts error. Check Evaporator Voltage Reading (Pre Clean) columns",
+  e_volts_post: "Evap Volts error. Check Evaporator Voltage Reading (Post Clean) columns"
+};
+
+//this can be referenced if using columns from Form Responses 1 or Calcs
+const COL = {
+  unit_name: 3,
+  maintenance: 4,
+  manu_year: 5,
+  make: 7,
+  unit_type: 8,
+  modelno: 9,
+  serialno: 10,
+  split_pack: 11,
+  coolingBtus: 12,
+  heatingBtu: 13,
+  tonnage: 15,
+  phases: 16,
+  pre_return_temp: 19,
+  pre_supply_temp: 20,
+  pre_static: 21,
+  pre_airflow: 22,
+  pre_c_amps1: 23,
+  pre_c_amps2: 24,
+  pre_c_amps3: 25,
+  pre_c_volts1: 26,
+  pre_c_volts2: 27,
+  pre_c_volts3: 28,
+  pre_e_amps1: 29,
+  pre_e_amps2: 30,
+  pre_e_amps3: 31,
+  pre_e_volts1: 32,
+  pre_e_volts2: 33,
+  pre_e_volts3: 34,
+  post_return_temp: 35,
+  post_supply_temp: 36,
+  post_static: 37,
+  post_airflow: 38,
+  post_c_amps1: 39,
+  post_c_amps2: 40,
+  post_c_amps3: 41,
+  post_c_volts1: 42,
+  post_c_volts2: 43,
+  post_c_volts3: 44,
+  post_e_amps1: 45,
+  post_e_amps2: 46,
+  post_e_amps3: 47,
+  post_e_volts1: 48,
+  post_e_volts2: 49,
+  post_e_volts3: 50,
+  pre_eer: 72,     
+  post_eer: 73,    
+  incentive: 74,  
+  pre_cfm: 75,     
+  post_cfm: 76,    
+  pre_deltaT: 77,  
+  post_deltaT: 78, 
+  pre_operatingBtus: 79,     
+  post_operatingBtus: 80,   
+  pre_watts: 81,   
+  post_watts: 82,  
+  kwh_saved: 83   
+};
+
+// === END GLOBALS === //
+
+function onFormSubmit(e) {
+  const sheet = e.source.getActiveSheet();
+  const row = e.range.getRow();
+  const values = e.values;
+  buildCalcHeaders();
+
+  // === Calculate all derived values in memory ===
+  const incentive = calcIncentiveByBTU(values[12]);
+
+  const wattsPre = calculateWattsPre_fs(values);
+  const wattsPost = calculateWattsPost_fs(values);
+
+  const cfmPre = calculateCfm(values[15]);
+  const cfmPost = calculateCfm(values[15]);
+
+  const deltaTPre = calculateDeltaT(values[19], values[20]);
+  const deltaTPost = calculateDeltaT(values[35], values[36]);
+
+  const btuPre = calculateBtus(deltaTPre, cfmPre);
+  const btuPost = calculateBtus(deltaTPost, cfmPost);
+
+  const eerPre = calculateEER(btuPre, wattsPre);
+  const eerPost = calculateEER(btuPost, wattsPost);
+
+  const kwhSaved = calculatekWhSaved(values[12], eerPre, eerPost);
+
+  // === Write all results in one batch ===
+  const results = [
+    [
+      eerPre,     // col 72
+      eerPost,    // col 73
+      incentive,  // col 74
+      cfmPre,     // col 75
+      cfmPost,    // col 76
+      deltaTPre,  // col 77
+      deltaTPost, // col 78
+      btuPre,     // col 79
+      btuPost,    // col 80
+      wattsPre,   // col 81
+      wattsPost,  // col 82
+      kwhSaved    // col 83
+    ]
+  ];
+
+  // Starting at column 72, write across all these values at once
+  sheet.getRange(row, 72, 1, results[0].length).setValues(results);
+
+    // === Apply color coding ===
+  const eerPreRange = sheet.getRange(row, 72);
+  const eerPostRange = sheet.getRange(row, 73);
+  const kwhRange = sheet.getRange(row, 83);
+  const deltaTPreRange = sheet.getRange(row,77);
+  const deltaTPostRange = sheet.getRange(row,78);
+
+  // Apply colors
+  eerPreRange.setBackground(getEerColor(eerPre));
+  eerPostRange.setBackground(getEerColor(eerPost));
+  kwhRange.setBackground(getKwhColor(kwhSaved));
+}
+
+/**
+ * ===
+ * CUSTOM MENU FUNCTIONS
+ * ===
+ */
+//done
+function menuBuildCalcsSheet(){
+  const rowLength = respSheet.getLastRow();
+  const colLength = respSheet.getLastColumn();
+
+  //check to see if the Calcs sheet exists, if not, create it
+  if(!ss.getSheetByName("Calcs")) {
+    ss.duplicateActiveSheet();
+    ss.renameActiveSheet("Calcs");
+    buildCalcHeaders();
+  }
+
+  const calcsSheet = ss.getSheetByName('Calcs');
+
+  const sheetValues = calcsSheet.getRange(2,1,rowLength-1,colLength).getValues();
+
+  for (let i = 0; i < sheetValues.length; i++) {
+    const row = sheetValues[i];
+    const activeRow = i+2;
+
+    const pre_watts = calculateWattsPre(row); 
+    const post_watts = calculateWattsPost(row);
+  
+    const incentive = calcIncentiveByBTU(row[COL.coolingBtus]);
+
+    const pre_cfm = calculateCfm(row[COL.tonnage]); //(tonnage)
+    const post_cfm = calculateCfm(row[COL.tonnage]); //(tonnage)
+
+    const pre_deltaT = calculateDeltaT(row[COL.pre_return_temp],row[COL.pre_supply_temp]); //(PRE return temp,supply temp)
+    const post_deltaT = calculateDeltaT(row[COL.post_return_temp],row[COL.post_supply_temp]); //(POST return temp,supply temp)
+
+    const pre_operatingBtus = calculateBtus(pre_deltaT,pre_cfm);
+    const post_operatingBtus = calculateBtus(post_deltaT,post_cfm);
+
+    const pre_eer = calculateEER(pre_operatingBtus,pre_watts);
+    const post_eer = calculateEER(post_operatingBtus,post_watts);
+
+    const kwh_saved = calculatekWhSaved(row[COL.coolingBtus],pre_eer,post_eer); //(btu cooling,pre eer, post eer)
+
+    const results = [
+      [
+        pre_eer,     // col 72
+        post_eer,    // col 73
+        incentive,  // col 74
+        pre_cfm,     // col 75
+        post_cfm,    // col 76
+        pre_deltaT,  // col 77
+        post_deltaT, // col 78
+        pre_operatingBtus,     // col 79
+        post_operatingBtus,    // col 80
+        pre_watts,   // col 81
+        post_watts,  // col 82
+        kwh_saved    // col 83
+      ]
+    ];
+
+  // Starting at column 72, write across all these values at once
+  calcsSheet.getRange(activeRow, 72, 1, results[0].length).setValues(results);
+
+  // === Apply color coding ===
+  const eerPreRange = calcsSheet.getRange(activeRow, 72);
+  const eerPostRange = calcsSheet.getRange(activeRow, 73);
+  const kwhRange = calcsSheet.getRange(activeRow, 83);
+
+  // Apply colors
+  eerPreRange.setBackground(getEerColor(pre_eer));
+  eerPostRange.setBackground(getEerColor(post_eer));
+  kwhRange.setBackground(getKwhColor(kwh_saved));
+  }
+}
+//done
+function menuBuildAveragesSheet() {
+  const rowLength = respSheet.getLastRow();
+  const colLength = respSheet.getLastColumn();
+
+  //check to see if the Calcs sheet exists, if not, create it
+  if(!ss.getSheetByName("Averages")) {
+    ss.duplicateActiveSheet();
+    ss.renameActiveSheet("Averages");
+    buildAvgHeaders();
+  }
+
+  const avgsSheet = ss.getSheetByName('Averages');
+
+  const sheetValues = avgsSheet.getRange(2,1,rowLength-1,colLength).getValues();
+
+  for (let i = 0; i < sheetValues.length; i++) {
+    const row = sheetValues[i];
+    const activeRow = i+2;
+
+    const pre_c_amps = calcAverage(row[23],row[24],row[25]);
+    const post_c_amps = calcAverage(row[39],row[40],row[41]);
+
+    const pre_c_volts = calcAverage(row[26],row[27],row[28]);
+    const post_c_volts = calcAverage(row[42],row[43],row[44]);
+
+    const pre_e_amps = calcAverage(row[29],row[30],row[31]);
+    const post_e_amps = calcAverage(row[45],row[46],row[47]);
+
+    const pre_e_volts = calcAverage(row[32],row[33],row[34]);
+    const post_e_volts = calcAverage(row[48],row[49],row[50]);
+
+    const unit_info = getMakeModel(row[7],row[9]);
+    const threePhase = isThreePhase(row[16]);
+
+    const results = [
+      [
+        pre_c_amps,   // col 71
+        post_c_amps,  // col 72
+        pre_c_volts,  // col 73
+        post_c_volts, // col 74
+        pre_e_amps,   // col 75
+        post_e_amps,  // col 76
+        pre_e_volts,  // col 77
+        post_e_volts, // col 78
+        unit_info,    // col 79
+        threePhase  // col 80
+      ]
+    ];
+
+  // Starting at column 71, write across all these values at once
+  avgsSheet.getRange(activeRow, 71, 1, results[0].length).setValues(results);
+  }
+}
+//done
+function menuBuildTriplesSheet(){
+  if(ss.getSheetByName("Triples") == null){
+    ss.duplicateActiveSheet();
+    ss.renameActiveSheet("Triples");
+    buildTripleHeaders();
+  }
+  calcTriples();
+}
+//done
+function menuCreateP3SubmissionSheet(){
+  const sheetFrom = ss.getSheetByName("Calcs");
+  const rowLength = sheetFrom.getLastRow();
+  const colLength = sheetFrom.getLastColumn();
+
+  const sheetValues = sheetFrom.getRange(2,1,rowLength-1,colLength).getValues();
+
+  ss.insertSheet("P3 Submissions");
+  buildP3Headers();
+  const sheetTo = ss.getSheetByName("P3 Submissions");
+
+  for (let i = 0; i < sheetValues.length; i++) {
+    const row = sheetValues[i];
+    const activeRow = i+2;
+
+    const unit_type = row[8];
+    const splitPackage = row[11];
+    const coolingBtus = row[12];
+    const heatingBtus = row[13];
+    const manufactureYear = row[5];
+    const maintenance = row[4];
+    const pre_eer = row[71];
+    const post_eer = row[72];
+    const make = row[7];
+    const modelno = row[9];
+    const serialno = row[10];
+
+    const results = [
+      [
+        unit_type,        // col 1
+        splitPackage,     // col 2
+        coolingBtus,      // col 3
+        heatingBtus,      // col 4
+        manufactureYear,  // col 5
+        maintenance,      // col 6
+        pre_eer,          // col 7
+        post_eer,         // col 8
+        make,             // col 9
+        modelno,          // col 10
+        serialno          // col 11
+      ]
+    ];
+
+  // Starting at column 1, write across all these values at once
+  sheetTo.getRange(activeRow, 1, 1, results[0].length).setValues(results);
+  }
+}
+//done
+function menuCreateENOWorkbookSheet(){
+  const calcsSheet = ss.getSheetByName("Calcs");
+  const avgsSheet = ss.getSheetByName("Averages");
+  // Make Calcs the active sheet
+  ss.setActiveSheet(calcsSheet);
+  const pre_powerFactor = 1;
+  const post_powerFactor = 1;
+  const rowLength = ss.getLastRow();
+  const colLength = ss.getLastColumn();
+
+  const calcsValues = calcsSheet.getRange(2,1,rowLength-1,colLength).getValues();
+  const avgsValues = avgsSheet.getRange(2,1,rowLength-1,colLength).getValues();
+
+  ss.insertSheet("ENO Workbook");
+  buildENOHeaders();
+  const sheetTo = ss.getSheetByName("ENO Workbook");
+
+  for (let i = 0; i < calcsValues.length; i++) {
+    const calcsRow = calcsValues[i];
+    const avgsRow = avgsValues[i];
+    const activeRow = i+2;
+
+    const unit_name = calcsRow[COL.unit_name];
+    const unit_type = unitChange(calcsRow[COL.unit_type]);
+    const tonnage = calcsRow[COL.tonnage];
+    const make_model = getMakeModel(calcsRow[COL.make],calcsRow[COL.modelno]);
+    const threePhase = calcsRow[COL.phases];
+    const pre_cfm = calcsRow[COL.pre_cfm];
+    const post_cfm = calcsRow[COL.post_cfm];
+    const pre_supply_temp = calcsRow[COL.pre_supply_temp];
+    const post_supply_temp = calcsRow[COL.post_supply_temp];
+    const pre_return_temp = calcsRow[COL.pre_return_temp];
+    const post_return_temp = calcsRow[COL.post_return_temp];
+    
+    const pre_c_volts = avgsRow[70];
+    const post_c_volts = avgsRow[71];
+    const pre_c_amps = avgsRow[72];
+    const post_c_amps = avgsRow[73];
+    const pre_e_volts = avgsRow[74];
+    const post_e_volts = avgsRow[75];
+    const pre_e_amps = avgsRow[76];
+    const post_e_amps = avgsRow[77];
+
+    const results = [
+      [
+        unit_name,
+        unit_type,
+        tonnage,
+        make_model,
+        threePhase,
+        pre_cfm,
+        post_cfm,
+        pre_supply_temp,
+        post_supply_temp,
+        pre_return_temp,
+        post_return_temp,
+        pre_powerFactor,
+        post_powerFactor,
+        pre_c_volts,
+        post_c_volts,
+        pre_c_amps,
+        post_c_amps,
+        pre_e_volts,
+        post_e_volts,
+        pre_e_amps,
+        post_e_amps
+      ]
+    ];
+
+  // Starting at column 1, write across all these values at once
+  sheetTo.getRange(activeRow, 1, 1, results[0].length).setValues(results);
+  }
+}
+
+function menuCheckEERs(){
+  const calcsSheet = ss.getSheetByName("Calcs");
+  const rowLength = calcsSheet.getLastRow();
+  const colLength = calcsSheet.getLastColumn();
+
+  const rowValues = calcsSheet.getRange(2,1,rowLength-1,colLength).getValues();
+
+  for (let i = 0; i < rowValues.length; i++) {
+    const row = rowValues[i];
+     const activeRow = i+2;
+
+    const pre_eer = row[COL.pre_eer];
+    const post_eer = row[COL.post_eer];
+    const preEerRange = calcsSheet.getRange(activeRow,COL.pre_eer);
+    const postEerRange = calcsSheet.getRange(activeRow,COL.post_eer);
+
+    preEerRange.setBackground(getEerColor(pre_eer));
+    postEerRange.setBackground(getEerColor(post_eer));
+
+    if(pre_eer > post_eer) {
+      preEerRange.setBackground('red');
+      postEerRange.setBackground('red');
+    }
+  }
+}
