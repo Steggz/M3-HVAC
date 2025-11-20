@@ -103,8 +103,7 @@ function isThreePhase(phases){
 function calculateEER(btus_in,watts_in){
   if(isNaN(btus_in))  return errors.btus;
   if(isNaN(watts_in)) return errors.watts;
-
-  return roundToTwo(btus_in / watts_in);
+  return !isNaN(roundToTwo(btus_in / watts_in)) ? roundToTwo(btus_in / watts_in) : 0;
 }
 //done
 function calculatekWhSaved(btus,pre_eer,post_eer){
@@ -113,7 +112,7 @@ function calculatekWhSaved(btus,pre_eer,post_eer){
   if(isNaN(post_eer)) return errors.post_eer;
   
   const kwh_saved = btus*0.001*((1/pre_eer)-(1/post_eer))*1637;
-  return roundToTwo(kwh_saved);
+  return !isNaN(kwh_saved) ? roundToTwo(kwh_saved) : 0;
 }
 //done
 function calcAverage(num1_in,num2_in,num3_in){
