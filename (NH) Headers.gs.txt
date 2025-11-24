@@ -1,16 +1,12 @@
 //done
 function buildCalcHeaders(){
-  const calcsSheet = ss.getSheetByName("Calcs");
+  const activeSheet = SpreadsheetApp.getActive();
   const headers = [['MX Contract','EER Pre','EER Post','Incentive','CFMs (Pre Clean)',
                     'CFMs (Post Clean)','DeltaT (Pre Clean)','DeltaT (Post Clean)',
                     'BTU Output (Pre Clean)','BTU Output (Post Clean)','Watts (Pre Clean)',
                     'Watts (Post Clean)','kWh Saved']];
   //adjust to desired range [13]
-  const range = calcsSheet.getRange('BS1:CE1');
-  const testCell = calcsSheet.getRange(1,67).getValue();
-  if(testCell != "MX Contract"){
-    range.setValues(headers);
-  }
+  const range = activeSheet.getRange('BS1:CE1').setValues(headers);
 }
 //done
 function buildAvgHeaders(){
