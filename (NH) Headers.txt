@@ -1,0 +1,48 @@
+//done
+function buildCalcHeaders(){
+  const activeSheet = SpreadsheetApp.getActive();
+  const headers = [['MX Contract','EER Pre','EER Post','Incentive','CFMs (Pre Clean)',
+                    'CFMs (Post Clean)','DeltaT (Pre Clean)','DeltaT (Post Clean)',
+                    'BTU Output (Pre Clean)','BTU Output (Post Clean)','Watts (Pre Clean)',
+                    'Watts (Post Clean)','kWh Saved']];
+  //adjust to desired range [13]
+  const range = activeSheet.getRange('BS1:CE1').setValues(headers);
+}
+//done
+function buildAvgHeaders(){
+  const avgsSheet = ss.getSheetByName("Averages");
+  const headers = [['Cond Amps Pre','Cond Amps Post','Cond Volts Pre','Cond Volts Post',
+                    'Evap Amps Pre','Evap Amps Post','Evap Volts Pre','Evap Volts Post','Make/Model','3 Phase?']];
+  //adjust to desired range [15]
+  const range = avgsSheet.getRange('BS1:CB1').setValues(headers);
+}
+//done
+function buildTripleHeaders(){
+  const triplesSheet = ss.getSheetByName("Triples");
+  //build all the special cols at the end
+  const headers = [['Return Temp Pre','Supply Temps Pre','Static Pressure Pre','Airflow Pre','Cond Amps 1 Pre','Cond Amps 2 Pre',
+                    'Cond Amps 3 Pre','Cond Volts 1 Pre','Cond Volts 2 Pre','Cond Volts 3 Pre','Evap Amps 1 Pre','Evap Amps 2 Pre',
+                    'Evap Amps 3 Pre','Evap Volts 1 Pre','Evap Volts 2 Pre','Evap Volts 3 Pre','Return Temp Post','Supply Temps Post',
+                    'Static Pressure Post','Airflow Post','Cond Amps 1 Post','Cond Amps 2 Post','Cond Amps 3 Post','Cond Volts 1 Post',
+                    'Cond Volts 2 Post','Cond Volts 3 Post','Evap Amps 1 Post','Evap Amps 2 Post','Evap Amps 3 Post','Evap Volts 1 Post',
+                    'Evap Volts 2 Post','Evap Volts 3 Post']];
+  //adjust to desired range [32]
+  const range = triplesSheet.getRange('BS1:CX1').setValues(headers);
+}
+
+function buildP3Headers(){
+  const p3Sheet = ss.getSheetByName("P3 Submissions");
+  const headers = [['Unit Type','Split / Package','Cooling BTUs','Heating BTUs',
+                    'Manufacture Year','Maintenance','Pre EER','Post EER','Make','Model #','Serial #']];
+  const range = p3Sheet.getRange('A1:K1').setValues(headers);
+}
+
+function buildENOHeaders(){
+  const p3Sheet = ss.getSheetByName("ENO Workbook");
+  const headers = [['Unit Name','Unit Type','Tonnage','Make/Model','Phases','Pre CFM',
+                    'Post CFM','Pre Supply Temp','Post Supply Temp','Pre Return Temp',
+                    'Post Return Temp','Pre Power Factor','Post Power Factor','Pre Cond Volts',
+                    'Post Cond Volts','Pre Cond Amps','Post Cond Amps','Pre Evap Volts','Post Evap Volts',
+                    'Pre Evap Amps','Post Evap Amps']];
+  const range = p3Sheet.getRange('A1:U1').setValues(headers);
+}
